@@ -4,7 +4,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 export type DeliveryStatus = 'idle' | 'not_started' | 'en_route' | 'arrived' | 'ended' | 'cancelled';
 
 export type Delivery = {
-  id: string;
+  id: number;
   code: string;
   destination: string; // Free-form address for Google Maps deep link
   expectedFee: number; // In LKR or any currency, just a number client-side
@@ -27,28 +27,6 @@ type DeliveryContextValue = {
 
 const DeliveryContext = createContext<DeliveryContextValue | undefined>(undefined);
 
-function generateMockDelivery(code: string): Delivery {
-  const feeBase = 450;
-  const hash = Array.from(code).reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
-  const expectedFee = feeBase + (hash % 550); // 450 - 999
-  const destinations = [
-    'Colombo Fort, Sri Lanka',
-    'Galle Face Green, Colombo',
-    'Kandy City Center, Kandy',
-    'Gampaha Railway Station, Gampaha',
-    'Matara Bus Stand, Matara',
-  ];
-  const destination = destinations[hash % destinations.length];
-  return {
-    id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-    code,
-    destination,
-    expectedFee,
-    createdAt: Date.now(),
-    status: 'not_started',
-  };
-}
-
 export const DeliveryProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
   const [ongoingDelivery, setOngoingDelivery] = useState<Delivery | null>(null);
   const [deliveryHistory, setDeliveryHistory] = useState<Delivery[]>([]);
@@ -61,11 +39,22 @@ export const DeliveryProvider: React.FC<React.PropsWithChildren> = ({ children }
     };
   }, []);
 
-  const addDeliveryByCode = useCallback((code: string) => {
+  // Remove or comment out generateMockDelivery if not needed
+
+  const addDeliveryByCode = async (code: string) => {
     if (ongoingDelivery) return; // Prevent adding when already ongoing
-    const newDelivery = generateMockDelivery(code.trim());
-    setOngoingDelivery(newDelivery);
-  }, [ongoingDelivery]);
+    try {
+      console.log('xx')
+      const response = await fetch(`http://localhost:8080/deliveries/by-code?code=${code.trim()}`);
+      if (!response.ok) throw new Error('Delivery not found');
+
+      const delivery: Delivery = await response.json();
+      console.log(delivery)
+      setOngoingDelivery(delivery);
+    } catch (error) {
+      alert('Failed to fetch delivery : ' + error);
+    }
+  };
 
   const cancelOngoing = useCallback(() => {
     setOngoingDelivery((current) => {
@@ -86,9 +75,25 @@ export const DeliveryProvider: React.FC<React.PropsWithChildren> = ({ children }
       };
 
       // Open Google Maps deep link with destination
+      const startingLocation = "Colombo";
       const encodedDest = encodeURIComponent(started.destination);
-      const url = `https://www.google.com/maps/dir/?api=1&destination=${encodedDest}&travelmode=driving`;
-      Linking.openURL(url).catch(() => {});
+      // Example: startingLocation is a string like "Colombo" or "7.1976765,80.1205763"
+      const encodedOrigin = encodeURIComponent(startingLocation);
+      const url = `https://www.google.com/maps/dir/?api=1&origin=${encodedOrigin}&destination=${encodedDest}&travelmode=driving`;
+
+      Linking.canOpenURL(url)
+        .then((supported) => {
+          if (supported) {
+            Linking.openURL(url);
+          } else {
+            // ✅ Web fallback
+            window.open(url, "_blank");
+          }
+        })
+        .catch(() => {
+          // ✅ In case Linking fails
+          window.open(url, "_blank");
+        });
 
       // Simulate arrival in 10 seconds
       if (arrivalTimerRef.current) clearTimeout(arrivalTimerRef.current);
