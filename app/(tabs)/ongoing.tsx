@@ -15,14 +15,14 @@ export default function OngoingScreen() {
       Alert.alert('Not arrived yet', 'You can end the delivery once you arrive.');
       return;
     }
-    endOngoing();
+    endOngoing(ongoingDelivery.id);
     router.push('/thank-you');
   };
 
   if (!ongoingDelivery) {
     return (
       <ParallaxScrollView>
-        <ThemedView style={styles.container}> 
+        <ThemedView style={styles.container}>
           <ThemedText>No ongoing delivery.</ThemedText>
         </ThemedView>
       </ParallaxScrollView>

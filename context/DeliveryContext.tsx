@@ -1,13 +1,13 @@
-import * as Linking from 'expo-linking';
+import * as WebBrowser from 'expo-web-browser';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 export type DeliveryStatus = 'idle' | 'not_started' | 'en_route' | 'arrived' | 'ended' | 'cancelled';
 
 export type Delivery = {
-  id: string;
+  id: number;
   code: string;
-  destination: string; // Free-form address for Google Maps deep link
-  expectedFee: number; // In LKR or any currency, just a number client-side
+  destination: string;
+  expectedFee: number;
   createdAt: number;
   startedAt?: number;
   arrivedAt?: number;
@@ -22,32 +22,10 @@ type DeliveryContextValue = {
   addDeliveryByCode: (code: string) => void;
   cancelOngoing: () => void;
   startOngoing: () => void;
-  endOngoing: () => void;
+  endOngoing: (id: number) => void;
 };
 
 const DeliveryContext = createContext<DeliveryContextValue | undefined>(undefined);
-
-function generateMockDelivery(code: string): Delivery {
-  const feeBase = 450;
-  const hash = Array.from(code).reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
-  const expectedFee = feeBase + (hash % 550); // 450 - 999
-  const destinations = [
-    'Colombo Fort, Sri Lanka',
-    'Galle Face Green, Colombo',
-    'Kandy City Center, Kandy',
-    'Gampaha Railway Station, Gampaha',
-    'Matara Bus Stand, Matara',
-  ];
-  const destination = destinations[hash % destinations.length];
-  return {
-    id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-    code,
-    destination,
-    expectedFee,
-    createdAt: Date.now(),
-    status: 'not_started',
-  };
-}
 
 export const DeliveryProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
   const [ongoingDelivery, setOngoingDelivery] = useState<Delivery | null>(null);
@@ -61,21 +39,50 @@ export const DeliveryProvider: React.FC<React.PropsWithChildren> = ({ children }
     };
   }, []);
 
-  const addDeliveryByCode = useCallback((code: string) => {
-    if (ongoingDelivery) return; // Prevent adding when already ongoing
-    const newDelivery = generateMockDelivery(code.trim());
-    setOngoingDelivery(newDelivery);
+  const addDeliveryByCode = async (code: string) => {
+    if (ongoingDelivery) return;
+    try {
+      const response = await fetch(`http://localhost:8080/deliveries/by-code?code=${code.trim()}`);
+      if (!response.ok) throw new Error('Delivery not found');
+      const delivery: Delivery = await response.json();
+      if (delivery.status !== 'not_started') {
+        alert('Delivery already added, try another one');
+        setOngoingDelivery(null);
+        return;
+      }
+      setOngoingDelivery(delivery);
+    } catch (error) {
+      alert('Failed to fetch delivery : ' + error);
+    }
+  };
+
+  const cancelOngoing = useCallback(async () => {
+    if (!ongoingDelivery) return;
+    try {
+      await fetch(`http://localhost:8080/deliveries/changeStatus`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'cancelled', id: ongoingDelivery.id }),
+      });
+    } catch (err) {
+      alert('Error changing status to cancelled');
+    }
+    setOngoingDelivery(() => null); // Always clear ongoing delivery
   }, [ongoingDelivery]);
+  const startOngoing = useCallback(async () => {
+    if (!ongoingDelivery) return;
 
-  const cancelOngoing = useCallback(() => {
-    setOngoingDelivery((current) => {
-      if (!current) return current;
-      if (current.status !== 'not_started') return current; // Only allow cancel before start
-      return null;
-    });
-  }, []);
+    try {
+      // Update status to 'en_route' in backend
+      await fetch(`http://localhost:8080/deliveries/changeStatus`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'en_route', startedAt: Date.now(), id: ongoingDelivery.id }),
+      });
+    } catch (err) {
+      alert('Error changing status to en_route');
+    }
 
-  const startOngoing = useCallback(() => {
     setOngoingDelivery((current) => {
       if (!current) return current;
       if (current.status !== 'not_started') return current;
@@ -85,31 +92,55 @@ export const DeliveryProvider: React.FC<React.PropsWithChildren> = ({ children }
         startedAt: Date.now(),
       };
 
-      // Open Google Maps deep link with destination
+      // Open Google Maps deep link with destination in in-app browser
+      const startingLocation = "Colombo";
       const encodedDest = encodeURIComponent(started.destination);
-      const url = `https://www.google.com/maps/dir/?api=1&destination=${encodedDest}&travelmode=driving`;
-      Linking.openURL(url).catch(() => {});
+      const encodedOrigin = encodeURIComponent(startingLocation);
+      const url = `https://www.google.com/maps/dir/?api=1&origin=${encodedOrigin}&destination=${encodedDest}&travelmode=driving`;
 
-      // Simulate arrival in 10 seconds
+      WebBrowser.openBrowserAsync(url);
+
+      // Simulate arrival in 10 seconds, then close browser and update status
       if (arrivalTimerRef.current) clearTimeout(arrivalTimerRef.current);
-      arrivalTimerRef.current = setTimeout(() => {
+      arrivalTimerRef.current = setTimeout(async () => {
+        WebBrowser.dismissBrowser();
+
+        // Update status to 'arrived' in backend
+        await fetch(`http://localhost:8080/deliveries/changeStatus`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'arrived', arrivedAt: Date.now(), id: current.id }),
+        });
+
         setOngoingDelivery((curr) => (curr ? { ...curr, status: 'arrived', arrivedAt: Date.now() } : curr));
       }, 10000);
 
       return started;
     });
-  }, []);
+  }, [ongoingDelivery]);
 
-  const endOngoing = useCallback(() => {
-    setOngoingDelivery((current) => {
-      if (!current) return current;
-      if (current.status !== 'arrived') return current;
-      const ended: Delivery = { ...current, status: 'ended', endedAt: Date.now() };
+  const endOngoing = useCallback(async (id: number) => {
+    if (!ongoingDelivery || ongoingDelivery.status !== 'arrived') return;
+
+    try {
+      // Update status to 'ended' in backend
+      const res = await fetch(`http://localhost:8080/deliveries/changeStatus`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'ended', endedAt: Date.now(), id }),
+      });
+
+      const x = await res.text();
+      console.log(x);
+
+      const ended: Delivery = { ...ongoingDelivery, status: 'ended', endedAt: Date.now() };
       setDeliveryHistory((prev) => [ended, ...prev]);
       setTotalEarnings((prev) => prev + ended.expectedFee);
-      return null; // Clear ongoing after ending
-    });
-  }, []);
+      setOngoingDelivery(null);
+    } catch (err) {
+      alert('Error occurred when ending delivery');
+    }
+  }, [ongoingDelivery]);
 
   const value = useMemo<DeliveryContextValue>(() => ({
     ongoingDelivery,
@@ -131,5 +162,3 @@ export function useDelivery(): DeliveryContextValue {
   if (!ctx) throw new Error('useDelivery must be used within a DeliveryProvider');
   return ctx;
 }
-
-
