@@ -33,7 +33,7 @@ export default function HomeScreen() {
         <ThemedText type="title">SwiftTrack Driver</ThemedText>
         <ThemedText>Total Earnings: LKR {totalEarnings.toFixed(2)}</ThemedText>
         {addDisabled ? (
-          <ThemedText>You already have an ongoing delivery.</ThemedText>
+          <ThemedText>You already have an ongoing delivery, Check Ongoing Tab.</ThemedText>
         ) : (
           <Button title="Add Delivery" onPress={() => setModalVisible(true)} disabled={addDisabled} />
         )}
