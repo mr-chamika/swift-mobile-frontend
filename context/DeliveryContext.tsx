@@ -56,14 +56,19 @@ export const DeliveryProvider: React.FC<React.PropsWithChildren> = ({ children }
     }
   };
 
-  const cancelOngoing = useCallback(() => {
-    setOngoingDelivery((current) => {
-      if (!current) return current;
-      if (current.status !== 'not_started') return current;
-      return null;
-    });
-  }, []);
-
+  const cancelOngoing = useCallback(async () => {
+    if (!ongoingDelivery) return;
+    try {
+      await fetch(`http://localhost:8080/deliveries/changeStatus`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'cancelled', id: ongoingDelivery.id }),
+      });
+    } catch (err) {
+      alert('Error changing status to cancelled');
+    }
+    setOngoingDelivery(() => null); // Always clear ongoing delivery
+  }, [ongoingDelivery]);
   const startOngoing = useCallback(async () => {
     if (!ongoingDelivery) return;
 
