@@ -27,7 +27,7 @@ export default function HistoryScreen() {
 
         const status = "ended";
 
-        const res = await fetch(`http://localhost:8080/deliveries/ended?status=${status}`)
+        const res = await fetch(`http://localhost:8088/deliveries/ended?status=${status}`)
 
         const data = await res.json();
         // console.log(data)

@@ -42,7 +42,7 @@ export const DeliveryProvider: React.FC<React.PropsWithChildren> = ({ children }
   const addDeliveryByCode = async (code: string) => {
     if (ongoingDelivery) return;
     try {
-      const response = await fetch(`http://localhost:8080/deliveries/by-code?code=${code.trim()}`);
+      const response = await fetch(`http://localhost:8088/deliveries/by-code?code=${code.trim()}`);
       if (!response.ok) throw new Error('Delivery not found');
       const delivery: Delivery = await response.json();
       if (delivery.status !== 'not_started') {
@@ -59,7 +59,7 @@ export const DeliveryProvider: React.FC<React.PropsWithChildren> = ({ children }
   const cancelOngoing = useCallback(async () => {
     if (!ongoingDelivery) return;
     try {
-      await fetch(`http://localhost:8080/deliveries/changeStatus`, {
+      await fetch(`http://localhost:8088/deliveries/changeStatus`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'cancelled', id: ongoingDelivery.id }),
@@ -74,7 +74,7 @@ export const DeliveryProvider: React.FC<React.PropsWithChildren> = ({ children }
 
     try {
       // Update status to 'en_route' in backend
-      await fetch(`http://localhost:8080/deliveries/changeStatus`, {
+      await fetch(`http://localhost:8088/deliveries/changeStatus`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'en_route', startedAt: Date.now(), id: ongoingDelivery.id }),
@@ -106,7 +106,7 @@ export const DeliveryProvider: React.FC<React.PropsWithChildren> = ({ children }
         WebBrowser.dismissBrowser();
 
         // Update status to 'arrived' in backend
-        await fetch(`http://localhost:8080/deliveries/changeStatus`, {
+        await fetch(`http://localhost:8088/deliveries/changeStatus`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: 'arrived', arrivedAt: Date.now(), id: current.id }),
@@ -125,7 +125,7 @@ export const DeliveryProvider: React.FC<React.PropsWithChildren> = ({ children }
     try {
       // Update status to 'ended' in backend
       if (imageBase64) {
-        const res = await fetch(`http://localhost:8080/deliveries/changeStatus`, {
+        const res = await fetch(`http://localhost:8088/deliveries/changeStatus`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: 'ended', endedAt: Date.now(), id }),
