@@ -22,7 +22,7 @@ type DeliveryContextValue = {
   addDeliveryByCode: (code: string) => void;
   cancelOngoing: () => void;
   startOngoing: () => void;
-  endOngoing: (id: number) => void;
+  endOngoing: (id: number, imageBase64?: string | null) => void;
 };
 
 const DeliveryContext = createContext<DeliveryContextValue | undefined>(undefined);
@@ -119,26 +119,27 @@ export const DeliveryProvider: React.FC<React.PropsWithChildren> = ({ children }
     });
   }, [ongoingDelivery]);
 
-  const endOngoing = useCallback(async (id: number) => {
+  const endOngoing = useCallback(async (id: number, imageBase64?: string | null) => {
     if (!ongoingDelivery || ongoingDelivery.status !== 'arrived') return;
 
     try {
       // Update status to 'ended' in backend
-      const res = await fetch(`http://localhost:8080/deliveries/changeStatus`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'ended', endedAt: Date.now(), id }),
-      });
+      if (imageBase64) {
+        const res = await fetch(`http://localhost:8080/deliveries/changeStatus`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'ended', endedAt: Date.now(), id }),
+        });
+        const x = await res.text();
+        console.log(x);
 
-      const x = await res.text();
-      console.log(x);
-
-      const ended: Delivery = { ...ongoingDelivery, status: 'ended', endedAt: Date.now() };
-      setDeliveryHistory((prev) => [ended, ...prev]);
-      setTotalEarnings((prev) => prev + ended.expectedFee);
-      setOngoingDelivery(null);
+        const ended: Delivery = { ...ongoingDelivery, status: 'ended', endedAt: Date.now() };
+        setDeliveryHistory((prev) => [ended, ...prev]);
+        setTotalEarnings((prev) => prev + ended.expectedFee);
+        setOngoingDelivery(null);
+      }
     } catch (err) {
-      alert('Error occurred when ending delivery');
+      alert('Error occurred when ending delivery : ' + err);
     }
   }, [ongoingDelivery]);
 
